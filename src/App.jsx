@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 // ===== ★ここを設定 =====
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw9KCJQ2-rcqCQkCceEblTf0X22tAZQ0OyLn346OTvEHZBOEG66nmWI60q3ELHu5ya-/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwPA5pcPvC4WFVXPdf9zxaZjZt1wjtyUFt7ey1FkNSHFcaKE6LPnwWcFvVBv7_eoe15/exec";
 // ======================
 
 const ADMIN_PASSWORD = "rock";
