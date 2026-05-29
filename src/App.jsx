@@ -5,11 +5,11 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbwPA5pcPvC4WFVXPdf9zxaZ
 // ======================
 
 const ADMIN_PASSWORD = "rock";
-const SESSION_KEY    = "rockfills_session";
+const SESSION_KEY    = "lockfills_session";
 
-const LOCATION_OPTIONS = ["栗小", "南小", "五霞BG", "ハクレン"];
+const LOCATION_OPTIONS = ["栗小", "南小", "ハクレン", "五霞BG"];
 
-const DEFAULT_BOYS_MEMBERS  = ["中島", "折原", "染谷(優)", "沢上", "小森谷", "中村(勘)", "中村(彰)", "菱沼", "平井", "橋本", "篠崎", "鞠子"];
+const DEFAULT_BOYS_MEMBERS  = ["橋本", "折原", "沢上", "篠崎", "鞠子", "中村(勘)", "櫻井", "中島", "小森谷", "染谷(優)", "菱沼", "平井", "武藤", "萱沼", "中村(彰)", "新井(佑)"];
 const DEFAULT_GIRLS_MEMBERS = ["須藤", "広沢", "桑原", "塚越", "白井", "森", "関", "加藤る", "坂元", "目黒", "本田", "佐藤", "鈴木", "加藤"];
 
 const DEFAULT_HOLIDAYS = [
@@ -87,7 +87,7 @@ const gasReq  = async (p) => (await fetch(`${GAS_URL}?${new URLSearchParams(p)}`
 const gasPost = async (b) => (await fetch(GAS_URL, { method: "POST", body: JSON.stringify(b) })).json();
 
 // ===== LocalStorage =====
-const LS_KEY = "rockfills_v5";
+const LS_KEY = "lockfills_v5";
 const lsLoad = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { return {}; } };
 const lsSave = (d) => { try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch {} };
 
@@ -688,7 +688,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 20, flexShrink: 0 }}>🏀</span>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 9, opacity: 0.7, letterSpacing: "0.1em" }}>LOCK FILLS</div>
+              <div style={{ fontSize: 9, opacity: 0.7, letterSpacing: "0.1em" }}>ROCKFILLS</div>
               <h1 style={{ margin: 0, fontSize: 16, fontWeight: 900, whiteSpace: "nowrap" }}>ロックフィルズ通信</h1>
               {currentYM && <div style={{ fontSize: 10, opacity: 0.8 }}>{ymToLabel(currentYM)} 鍵当番表</div>}
             </div>
