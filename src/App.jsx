@@ -484,7 +484,7 @@ function DayCard({ s, isAdmin, upd, boysMembers, girlsMembers, holidaysSet }) {
 }
 
 // ===== 当番表ビュー =====
-function ScheduleView({ rows, setRows, notice, setNotice, isAdmin, onSaveAll, saving, boysMembers, girlsMembers, holidaysSet }) {
+function ScheduleView({ rows, setRows, notice, setNotice, isAdmin, onSaveAll, saving, boysMembers, girlsMembers, holidaysSet, currentYM }) {
   const upd    = (date, field, value) => setRows(prev => prev.map(r => r.date === date ? { ...r, [field]: value } : r));
   const boysM  = rows.filter(r => r.boysMatch);
   const girlsM = rows.filter(r => r.girlsMatch);
@@ -530,7 +530,138 @@ function ScheduleView({ rows, setRows, notice, setNotice, isAdmin, onSaveAll, sa
           {saving ? "⏳ 保存中..." : "💾 この月の内容を保存する"}
         </button>
       )}
+
+      {/* PDF出力ボタン（全員表示） */}
+      <button onClick={() => window.print()} style={{ width: "100%", padding: "13px", borderRadius: 14, border: "1.5px solid #1e3a8a", background: "#fff", color: "#1e3a8a", fontWeight: 800, fontSize: 15, cursor: "pointer", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        🖨️ PDF出力（印刷）
+      </button>
+
+      {/* 印刷用テンプレート（画面非表示・印刷時のみ表示） */}
+      <PrintView rows={rows} notice={notice} boysM={boysM} girlsM={girlsM} holidaysSet={holidaysSet} currentYM={currentYM} />
     </div>
+  );
+}
+
+// ===== 印刷用ビュー =====
+function PrintView({ rows, notice, boysM, girlsM, holidaysSet, currentYM }) {
+  const [y, m] = currentYM ? currentYM.split("-") : ["", ""];
+  const monthLabel = currentYM ? `${y}年${parseInt(m)}月` : "";
+
+  return (
+    <>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #print-area, #print-area * { visibility: visible !important; }
+          #print-area {
+            position: fixed !important;
+            top: 0; left: 0;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm 14mm;
+            box-sizing: border-box;
+            background: white !important;
+            font-family: 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif;
+            font-size: 9pt;
+            color: #111;
+          }
+          @page { size: A4 portrait; margin: 0; }
+        }
+        @media screen { #print-area { display: none; } }
+      `}</style>
+
+      <div id="print-area">
+        {/* ヘッダー */}
+        <div style={{ textAlign: "center", borderBottom: "2px solid #1e3a8a", paddingBottom: 6, marginBottom: 10 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#1e3a8a", letterSpacing: "0.05em" }}>
+            🏀 ロックフィルズ通信
+          </div>
+          <div style={{ fontSize: 12, color: "#374151", marginTop: 2 }}>{monthLabel}号　鍵当番表</div>
+        </div>
+
+        {/* 当番表 */}
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10, fontSize: 8.5 }}>
+          <thead>
+            <tr style={{ background: "#1e3a8a", color: "#fff" }}>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "14%" }}>日付</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "13%" }}>男子場所</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "13%" }}>男子時間</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "12%" }}>男子当番</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "13%" }}>女子場所</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "13%" }}>女子時間</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "12%" }}>女子当番</th>
+              <th style={{ padding: "4px 6px", textAlign: "center", border: "1px solid #ccc", width: "10%" }}>備考</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((s, i) => {
+              const showH  = isHolidayFn(s.date, holidaysSet) && !isWeekend(s.date);
+              const wd     = getWeekday(s.date);
+              const isWe   = isWeekend(s.date);
+              const dt     = new Date(s.date + "T00:00:00");
+              const dateLabel = `${dt.getMonth()+1}/${dt.getDate()}(${WEEKDAY_NAMES[wd]}${showH ? "祝" : ""})`;
+              const rowBg  = i % 2 === 0 ? "#f8faff" : "#fff";
+              const dateBg = wd === 0 ? "#fef2f2" : wd === 6 ? "#eff6ff" : showH ? "#fff7ed" : rowBg;
+              const hasMatch = s.boysMatch || s.girlsMatch;
+              return (
+                <tr key={s.date} style={{ background: rowBg }}>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center", background: dateBg, fontWeight: 700, color: wd === 0 ? "#dc2626" : wd === 6 ? "#1d4ed8" : showH ? "#ea580c" : "#111" }}>{dateLabel}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center" }}>{s.boysOff ? "休み" : s.boysLocation}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center" }}>{s.boysOff ? "-" : fmtTime(s.boysTimeStart, s.boysTimeEnd)}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center", fontWeight: 700 }}>{s.boysOff ? "-" : (s.boys || "未定")}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center" }}>{s.girlsOff ? "休み" : s.girlsLocation}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center" }}>{s.girlsOff ? "-" : fmtTime(s.girlsTimeStart, s.girlsTimeEnd)}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", textAlign: "center", fontWeight: 700 }}>{s.girlsOff ? "-" : (s.girls || "未定")}</td>
+                  <td style={{ padding: "3px 5px", border: "1px solid #ddd", fontSize: 7.5, color: "#6b7280" }}>{hasMatch ? "※試合あり" : ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* 試合情報 */}
+        {(boysM.length > 0 || girlsM.length > 0) && (
+          <div style={{ marginBottom: 10, border: "1px solid #bfdbfe", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ background: "#1e3a8a", color: "#fff", padding: "3px 8px", fontSize: 9, fontWeight: 800 }}>■ 試合・イベント情報</div>
+            <div style={{ padding: "6px 8px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {boysM.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 8.5, color: "#1d4ed8", marginBottom: 3 }}>【男子】</div>
+                  {boysM.map(s => (
+                    <div key={s.date} style={{ fontSize: 8, marginBottom: 2 }}>
+                      <span style={{ fontWeight: 700, marginRight: 4 }}>{fmtDate(s.date, holidaysSet)}</span>{s.boysMatch}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {girlsM.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 8.5, color: "#be185d", marginBottom: 3 }}>【女子】</div>
+                  {girlsM.map(s => (
+                    <div key={s.date} style={{ fontSize: 8, marginBottom: 2 }}>
+                      <span style={{ fontWeight: 700, marginRight: 4 }}>{fmtDate(s.date, holidaysSet)}</span>{s.girlsMatch}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 連絡事項 */}
+        {notice && (
+          <div style={{ border: "1px solid #bfdbfe", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ background: "#1e3a8a", color: "#fff", padding: "3px 8px", fontSize: 9, fontWeight: 800 }}>■ 連絡事項</div>
+            <div style={{ padding: "6px 8px", fontSize: 9, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{notice}</div>
+          </div>
+        )}
+
+        {/* フッター */}
+        <div style={{ textAlign: "right", marginTop: 8, fontSize: 7.5, color: "#9ca3af" }}>
+          ROCKFILLS ミニバスケットボールチーム
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -743,7 +874,7 @@ export default function App() {
           </div>
         )}
         {!loading && currentYM && currentRows.length > 0 && (
-          <ScheduleView rows={currentRows} setRows={setCurrentRows} notice={currentNotice} setNotice={setCurrentNotice} isAdmin={isAdmin} onSaveAll={handleSaveAll} saving={saving} boysMembers={boysMembers} girlsMembers={girlsMembers} holidaysSet={holidaysSet} />
+          <ScheduleView rows={currentRows} setRows={setCurrentRows} notice={currentNotice} setNotice={setCurrentNotice} isAdmin={isAdmin} onSaveAll={handleSaveAll} saving={saving} boysMembers={boysMembers} girlsMembers={girlsMembers} holidaysSet={holidaysSet} currentYM={currentYM} />
         )}
       </div>
     </div>
