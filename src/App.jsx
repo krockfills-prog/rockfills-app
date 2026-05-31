@@ -554,10 +554,9 @@ function PrintView({ rows, notice, boysM, girlsM, holidaysSet, currentYM }) {
           body * { visibility: hidden !important; }
           #print-area, #print-area * { visibility: visible !important; }
           #print-area {
-            position: fixed !important;
+            position: absolute !important;
             top: 0; left: 0;
             width: 210mm;
-            min-height: 297mm;
             padding: 12mm 14mm;
             box-sizing: border-box;
             background: white !important;
