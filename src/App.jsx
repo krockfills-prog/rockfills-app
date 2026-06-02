@@ -464,10 +464,11 @@ function PrintView({ rows, notice, boysM, girlsM, holidaysSet, currentYM }) {
         @media screen { #print-area { display: none !important; } }
         @media print {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          body { margin: 0 !important; padding: 0 !important; }
-          body > div { display: none !important; }
-          #print-area { display: block !important; padding: 10mm 12mm; box-sizing: border-box; font-family: 'Noto Sans JP', Arial, sans-serif; font-size: 10pt; color: #111; }
-          @page { size: A4 portrait; margin: 0; }
+          @page { size: A4 portrait; margin: 10mm 12mm; }
+          body { background: white !important; }
+          body > div { visibility: hidden !important; }
+          #print-area { visibility: visible !important; display: block !important; position: fixed !important; top: 0; left: 0; width: 100%; }
+          #print-area * { visibility: visible !important; }
         }
       `}</style>
       <div id="print-area">
