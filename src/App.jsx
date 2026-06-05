@@ -464,11 +464,23 @@ function ScheduleView({ rows, setRows, notice, setNotice, isAdmin, onSaveAll, sa
 
   const handlePrint = () => {
     const html = buildPrintHtml(rows, notice, boysM, girlsM, holidaysSet, currentYM);
-    const win = window.open("", "_blank");
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 500);
+    // 既存のiframeがあれば削除
+    const existing = document.getElementById("print-iframe");
+    if (existing) existing.remove();
+    // iframeを作成してbodyに追加
+    const iframe = document.createElement("iframe");
+    iframe.id = "print-iframe";
+    iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    // ロード完了後に印刷
+    iframe.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => iframe.remove(), 2000);
+    };
   };
 
   return (
