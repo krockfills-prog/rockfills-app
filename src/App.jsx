@@ -551,14 +551,29 @@ export default function App() {
   const [savingHolidays, setSavingHolidays] = useState(false);
   const holidaysSet = new Set(holidays);
 
+  // 公開状態管理: { "2026-06": true, "2026-07": false }
+  const [publishedYMs, setPublishedYMs] = useState(() => lsLoad().__published || {});
+
   useEffect(() => {
     if (!gasOk) return;
     gasReq({ action: "getMembers" }).then(data => {
       if (data.boys?.length)     setBoysMembers(data.boys);
       if (data.girls?.length)    setGirlsMembers(data.girls);
       if (data.holidays?.length) setHolidays(data.holidays);
+      if (data.published)        setPublishedYMs(data.published);
     }).catch(() => {});
   }, [gasOk]);
+
+  const handleTogglePublish = async (ym) => {
+    const next = { ...publishedYMs, [ym]: !publishedYMs[ym] };
+    setPublishedYMs(next);
+    try {
+      if (!gasOk) { lsSave({ ...lsLoad(), __published: next }); }
+      else { await gasPost({ action: "savePublished", published: next }); }
+      setSaveToast(next[ym] ? "✓ 公開しました！" : "🔒 非公開にしました");
+      setTimeout(() => setSaveToast(""), 3000);
+    } catch { setSaveToast("⚠️ 保存に失敗しました"); }
+  };
 
   const handleSaveMembers = async (boys, girls) => {
     setSavingMembers(true);
@@ -634,10 +649,20 @@ export default function App() {
       const updated = { ...localData, [ym]: { rows, notice: "" } };
       setLocalData(updated); lsSave(updated);
       setAvailableYMs(Object.keys(updated).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4));
+      // 新規作成はデフォルト非公開
+      const nextPub = { ...publishedYMs, [ym]: false };
+      setPublishedYMs(nextPub); lsSave({ ...lsLoad(), __published: nextPub });
       setCurrentYM(ym); setCurrentRows(rows); setCurrentNotice(""); setShowNewModal(false); return;
     }
     setSaving(true);
-    try { await gasPost({ action: "save", ym, rows, notice: "" }); await fetchList(); setCurrentYM(ym); setCurrentRows(rows); setCurrentNotice(""); }
+    try {
+      await gasPost({ action: "save", ym, rows, notice: "" });
+      // 新規作成はデフォルト非公開
+      const nextPub = { ...publishedYMs, [ym]: false };
+      setPublishedYMs(nextPub);
+      await gasPost({ action: "savePublished", published: nextPub });
+      await fetchList(); setCurrentYM(ym); setCurrentRows(rows); setCurrentNotice("");
+    }
     catch { setError("作成に失敗しました"); }
     finally { setSaving(false); setShowNewModal(false); }
   };
@@ -676,9 +701,34 @@ export default function App() {
         )}
         {availableYMs.length > 0 && (
           <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
-            {availableYMs.map(ym => (
-              <button key={ym} onClick={() => setCurrentYM(ym)} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, border: "none", background: currentYM === ym ? "#fff" : "rgba(255,255,255,0.18)", color: currentYM === ym ? "#1e3a8a" : "#fff", fontWeight: currentYM === ym ? 800 : 400, fontSize: 12, cursor: "pointer" }}>{ymToLabel(ym)}</button>
-            ))}
+            {availableYMs
+              .filter(ym => isAdmin || publishedYMs[ym])
+              .map(ym => {
+                const isPublished = publishedYMs[ym];
+                const isActive = currentYM === ym;
+                return (
+                  <div key={ym} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                    <button onClick={() => setCurrentYM(ym)} style={{
+                      padding: "6px 12px", borderRadius: 8, border: "none",
+                      background: isActive ? "#fff" : "rgba(255,255,255,0.18)",
+                      color: isActive ? "#1e3a8a" : "#fff",
+                      fontWeight: isActive ? 800 : 400, fontSize: 12, cursor: "pointer",
+                      opacity: isAdmin && !isPublished ? 0.7 : 1,
+                    }}>
+                      {ymToLabel(ym)}{isAdmin && !isPublished ? " 🔒" : ""}
+                    </button>
+                    {isAdmin && (
+                      <button onClick={() => handleTogglePublish(ym)} style={{
+                        fontSize: 9, padding: "1px 8px", borderRadius: 6, border: "none", cursor: "pointer",
+                        background: isPublished ? "#22c55e" : "#ef4444",
+                        color: "#fff", fontWeight: 700,
+                      }}>
+                        {isPublished ? "公開中" : "非公開"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>
