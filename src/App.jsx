@@ -464,23 +464,29 @@ function ScheduleView({ rows, setRows, notice, setNotice, isAdmin, onSaveAll, sa
 
   const handlePrint = () => {
     const html = buildPrintHtml(rows, notice, boysM, girlsM, holidaysSet, currentYM);
-    // 既存のiframeがあれば削除
     const existing = document.getElementById("print-iframe");
     if (existing) existing.remove();
-    // iframeを作成してbodyに追加
     const iframe = document.createElement("iframe");
     iframe.id = "print-iframe";
-    iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;";
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
     document.body.appendChild(iframe);
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(html);
-    iframe.contentDocument.close();
-    // ロード完了後に印刷
-    iframe.onload = () => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      setTimeout(() => iframe.remove(), 2000);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // ロード完了を待つ
+    const doPrint = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch(e) {
+        console.error("print error", e);
+      }
+      setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 3000);
     };
+    // onloadが発火しない場合もあるので両方対応
+    iframe.onload = doPrint;
+    setTimeout(doPrint, 800);
   };
 
   return (
@@ -553,6 +559,8 @@ export default function App() {
 
   // 公開状態管理: { "2026-06": true, "2026-07": false }
   const [publishedYMs, setPublishedYMs] = useState(() => lsLoad().__published || {});
+  // GASから公開状態を取得済みかどうか
+  const [publishedLoaded, setPublishedLoaded] = useState(!isGasReady());
 
   useEffect(() => {
     if (!gasOk) return;
@@ -561,7 +569,8 @@ export default function App() {
       if (data.girls?.length)    setGirlsMembers(data.girls);
       if (data.holidays?.length) setHolidays(data.holidays);
       if (data.published)        setPublishedYMs(data.published);
-    }).catch(() => {});
+      setPublishedLoaded(true);
+    }).catch(() => { setPublishedLoaded(true); });
   }, [gasOk]);
 
   const handleTogglePublish = async (ym) => {
@@ -699,12 +708,12 @@ export default function App() {
             <button onClick={handleLogout}                style={{ flex: 1, minWidth: "calc(50% - 3px)", fontSize: 12, background: "rgba(255,255,255,0.18)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "7px 4px", cursor: "pointer" }}>ログアウト</button>
           </div>
         )}
-        {availableYMs.length > 0 && (
+        {availableYMs.length > 0 && publishedLoaded && (
           <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
             {availableYMs
-              .filter(ym => isAdmin || publishedYMs[ym])
+              .filter(ym => isAdmin || publishedYMs[ym] === true)
               .map(ym => {
-                const isPublished = publishedYMs[ym];
+                const isPublished = publishedYMs[ym] === true;
                 const isActive = currentYM === ym;
                 return (
                   <div key={ym} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
