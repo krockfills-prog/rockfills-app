@@ -12,6 +12,7 @@ const LOCATION_OPTIONS = ["栗小", "南小", "ハクレン", "五霞BG"];
 const DEFAULT_BOYS_MEMBERS  = ["橋本", "折原", "沢上", "篠崎", "鞠子", "中村(勘)", "櫻井", "中島", "小森谷", "染谷(優)", "菱沼", "平井", "武藤", "萱沼", "中村(彰)", "新井(佑)"];
 const DEFAULT_GIRLS_MEMBERS = ["須藤", "広沢", "桑原", "塚越", "白井", "森", "関", "加藤る", "坂元", "目黒", "本田", "佐藤", "鈴木", "加藤"];
 
+
 const DEFAULT_HOLIDAYS = [
   "2024-01-01","2024-01-08","2024-02-11","2024-02-12","2024-02-23","2024-03-20",
   "2024-04-29","2024-05-03","2024-05-04","2024-05-05","2024-05-06",
@@ -464,29 +465,26 @@ function ScheduleView({ rows, setRows, notice, setNotice, isAdmin, onSaveAll, sa
 
   const handlePrint = () => {
     const html = buildPrintHtml(rows, notice, boysM, girlsM, holidaysSet, currentYM);
-    const existing = document.getElementById("print-iframe");
-    if (existing) existing.remove();
-    const iframe = document.createElement("iframe");
-    iframe.id = "print-iframe";
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
-    // ロード完了を待つ
+    // ユーザー操作中に開くのでポップアップブロックされにくい
+    const win = window.open("about:blank", "_blank");
+    if (!win) {
+      alert("ポップアップがブロックされました。\nブラウザの設定でポップアップを許可してください。");
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    // iOSはonloadが不安定なのでsetTimeoutで対応
     const doPrint = () => {
-      try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-      } catch(e) {
-        console.error("print error", e);
-      }
-      setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 3000);
+      win.focus();
+      win.print();
     };
-    // onloadが発火しない場合もあるので両方対応
-    iframe.onload = doPrint;
-    setTimeout(doPrint, 800);
+    if (win.document.readyState === "complete") {
+      setTimeout(doPrint, 300);
+    } else {
+      win.onload = () => setTimeout(doPrint, 300);
+      setTimeout(doPrint, 1000); // フォールバック
+    }
   };
 
   return (
@@ -568,7 +566,21 @@ export default function App() {
       if (data.boys?.length)     setBoysMembers(data.boys);
       if (data.girls?.length)    setGirlsMembers(data.girls);
       if (data.holidays?.length) setHolidays(data.holidays);
-      if (data.published)        setPublishedYMs(data.published);
+      if (data.published) {
+        setPublishedYMs(data.published);
+        // 非管理者の場合、currentYMが非公開なら公開中の最新月に切り替え
+        setCurrentYM(prev => {
+          if (!prev) return prev;
+          if (data.published[prev] === true) return prev;
+          // 公開中の月を探す
+          const pub = Object.entries(data.published)
+            .filter(([, v]) => v === true)
+            .map(([k]) => k)
+            .sort()
+            .reverse();
+          return pub[0] || prev;
+        });
+      }
       setPublishedLoaded(true);
     }).catch(() => { setPublishedLoaded(true); });
   }, [gasOk]);
@@ -576,6 +588,15 @@ export default function App() {
   const handleTogglePublish = async (ym) => {
     const next = { ...publishedYMs, [ym]: !publishedYMs[ym] };
     setPublishedYMs(next);
+    // 非公開にした月を保護者が見ていたら公開月に切り替え
+    if (!next[ym] && currentYM === ym && !isAdmin) {
+      const pub = Object.entries(next)
+        .filter(([, v]) => v === true)
+        .map(([k]) => k)
+        .sort().reverse();
+      setCurrentYM(pub[0] || null);
+    }
+    // 管理者が非公開にした月を表示中でも内容はそのまま見せる（管理者はOK）
     try {
       if (!gasOk) { lsSave({ ...lsLoad(), __published: next }); }
       else { await gasPost({ action: "savePublished", published: next }); }
@@ -608,16 +629,28 @@ export default function App() {
   const fetchList = useCallback(async () => {
     if (!gasOk) {
       const keys = Object.keys(localData).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
-      setAvailableYMs(keys); if (keys.length > 0) setCurrentYM(prev => prev || keys[0]); return;
+      setAvailableYMs(keys);
+      if (keys.length > 0) setCurrentYM(prev => {
+        if (prev && keys.includes(prev)) return prev;
+        // 非管理者は公開中の最新月
+        const pub = keys.filter(k => publishedYMs[k] === true);
+        return pub[0] || keys[0];
+      });
+      return;
     }
     try {
       setLoading(true);
       const data = await gasReq({ action: "list" });
       const sorted = (data.yms || []).sort().reverse().slice(0, 4);
-      setAvailableYMs(sorted); if (sorted.length > 0) setCurrentYM(prev => prev || sorted[0]);
+      setAvailableYMs(sorted);
+      if (sorted.length > 0) setCurrentYM(prev => {
+        if (prev && sorted.includes(prev)) return prev;
+        const pub = sorted.filter(k => publishedYMs[k] === true);
+        return pub[0] || sorted[0];
+      });
     } catch { setError("データの読み込みに失敗しました"); }
     finally { setLoading(false); }
-  }, [gasOk, localData]);
+  }, [gasOk, localData, publishedYMs]);
 
   useEffect(() => { fetchList(); }, []);
   useEffect(() => {
