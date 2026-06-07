@@ -341,9 +341,18 @@ function HolidaysModal({ holidays, onSave, onClose, saving }) {
 function NewMonthModal({ existingYMs, onClose, onCreate, holidaysSet }) {
   const today = new Date();
   const [yearStr, setYearStr] = useState(String(today.getFullYear())); const [month, setMonth] = useState(today.getMonth() + 1);
+  const [creating, setCreating] = useState(false);
   const year = parseInt(yearStr) || 0; const validYear = year >= 2000 && year <= 2099;
   const ym = validYear ? toYM(year, month) : ""; const exists = existingYMs.includes(ym);
   const preview = validYear ? generateMonth(year, month, holidaysSet) : [];
+
+  const handleCreate = async () => {
+    setCreating(true);
+    await onCreate(year, month, preview);
+    // onCreateの中でモーダルが閉じるので、念のため
+    setCreating(false);
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
       <div style={{ background: "#fff", borderRadius: 18, padding: 24, width: 320, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -366,9 +375,21 @@ function NewMonthModal({ existingYMs, onClose, onCreate, holidaysSet }) {
           ))}
         </div>
         {exists && <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "7px 12px", marginBottom: 12, fontSize: 12, color: "#92400e" }}>⚠️ {ymToLabel(ym)}はすでに作成済みです。上書きされます。</div>}
+
+        {/* 作成中表示 */}
+        {creating && (
+          <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 10, padding: "12px", marginBottom: 12, textAlign: "center" }}>
+            <div style={{ fontSize: 13, color: "#1d4ed8", fontWeight: 700 }}>⏳ 作成中です...</div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>スプレッドシートに保存しています</div>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#f9fafb", color: "#374151", fontWeight: 700, cursor: "pointer" }}>キャンセル</button>
-          <button onClick={() => onCreate(year, month, preview)} disabled={!validYear || preview.length === 0} style={{ flex: 2, padding: 11, borderRadius: 10, border: "none", background: (!validYear || preview.length === 0) ? "#d1d5db" : "linear-gradient(135deg,#1e3a8a,#312e81)", color: "#fff", fontWeight: 800, cursor: (!validYear || preview.length === 0) ? "not-allowed" : "pointer" }}>作成する</button>
+          <button onClick={onClose} disabled={creating} style={{ flex: 1, padding: 11, borderRadius: 10, border: "1.5px solid #e5e7eb", background: creating ? "#f3f4f6" : "#f9fafb", color: "#374151", fontWeight: 700, cursor: creating ? "not-allowed" : "pointer" }}>キャンセル</button>
+          <button onClick={handleCreate} disabled={!validYear || preview.length === 0 || creating}
+            style={{ flex: 2, padding: 11, borderRadius: 10, border: "none", background: (!validYear || preview.length === 0 || creating) ? "#a5b4fc" : "linear-gradient(135deg,#1e3a8a,#312e81)", color: "#fff", fontWeight: 800, cursor: (!validYear || preview.length === 0 || creating) ? "not-allowed" : "pointer" }}>
+            {creating ? "⏳ 作成中..." : "作成する"}
+          </button>
         </div>
       </div>
     </div>
@@ -621,7 +642,22 @@ export default function App() {
     finally { setSavingHolidays(false); }
   };
 
-  const fetchList = useCallback(async () => {
+  // publishedYMsが変わったとき、currentYMが非公開なら公開月に切り替え
+  useEffect(() => {
+    if (!publishedLoaded) return;
+    if (isAdmin) return; // 管理者は切り替えない
+    setCurrentYM(prev => {
+      if (!prev) return prev;
+      if (publishedYMs[prev] === true) return prev; // 現在の月が公開中ならそのまま
+      // 公開中の月を探して最新を返す
+      const pubKeys = Object.entries(publishedYMs)
+        .filter(([, v]) => v === true)
+        .map(([k]) => k)
+        .sort()
+        .reverse();
+      return pubKeys[0] || null;
+    });
+  }, [publishedYMs, publishedLoaded, isAdmin]);
     if (!gasOk) {
       const keys = Object.keys(localData).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
       setAvailableYMs(keys);
