@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 // ===== ★ここを設定 =====
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwPA5pcPvC4WFVXPdf9zxaZjZt1wjtyUFt7ey1FkNSHFcaKE6LPnwWcFvVBv7_eoe15/exec";
@@ -11,7 +11,6 @@ const LOCATION_OPTIONS = ["栗小", "南小", "ハクレン", "五霞BG"];
 
 const DEFAULT_BOYS_MEMBERS  = ["橋本", "折原", "沢上", "篠崎", "鞠子", "中村(勘)", "櫻井", "中島", "小森谷", "染谷(優)", "菱沼", "平井", "武藤", "萱沼", "中村(彰)", "新井(佑)"];
 const DEFAULT_GIRLS_MEMBERS = ["須藤", "広沢", "桑原", "塚越", "白井", "森", "関", "加藤る", "坂元", "目黒", "本田", "佐藤", "鈴木", "加藤"];
-
 
 const DEFAULT_HOLIDAYS = [
   "2024-01-01","2024-01-08","2024-02-11","2024-02-12","2024-02-23","2024-03-20",
@@ -38,6 +37,12 @@ const WEEKDAY_DEFAULTS = {
   holiday: { location: "南小", timeStart: "9:00", timeEnd: "13:00" },
 };
 
+// 日本時間で今日の日付を取得（toISOStringはUTCなのでズレる）
+function getTodayJST() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
 const getWeekday    = (d) => new Date(d + "T00:00:00").getDay();
 const isWeekend     = (d) => { const w = getWeekday(d); return w === 0 || w === 6; };
 const isHolidayFn   = (d, set) => set.has(d);
@@ -372,7 +377,7 @@ function NewMonthModal({ existingYMs, onClose, onCreate, holidaysSet }) {
 
 function DayCard({ s, isAdmin, upd, boysMembers, girlsMembers, holidaysSet }) {
   const [open, setOpen] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayJST();
   const isPast = s.date < today; const isToday = s.date === today;
   const dc = DAY_STYLE[s.day] || { text: "#374151", badge: "#e5e7eb" };
   const dt = new Date(s.date + "T00:00:00");
@@ -557,8 +562,10 @@ export default function App() {
 
   // 公開状態管理: { "2026-06": true, "2026-07": false }
   const [publishedYMs, setPublishedYMs] = useState(() => lsLoad().__published || {});
-  // GASから公開状態を取得済みかどうか
   const [publishedLoaded, setPublishedLoaded] = useState(!isGasReady());
+
+  // 公開中の月かどうかを判定（管理者は常にtrue）
+  const isVisible = (ym) => isAdmin || publishedYMs[ym] === true;
 
   useEffect(() => {
     if (!gasOk) return;
@@ -566,41 +573,29 @@ export default function App() {
       if (data.boys?.length)     setBoysMembers(data.boys);
       if (data.girls?.length)    setGirlsMembers(data.girls);
       if (data.holidays?.length) setHolidays(data.holidays);
-      if (data.published) {
-        setPublishedYMs(data.published);
-        // 非管理者の場合、currentYMが非公開なら公開中の最新月に切り替え
-        setCurrentYM(prev => {
-          if (!prev) return prev;
-          if (data.published[prev] === true) return prev;
-          // 公開中の月を探す
-          const pub = Object.entries(data.published)
-            .filter(([, v]) => v === true)
-            .map(([k]) => k)
-            .sort()
-            .reverse();
-          return pub[0] || prev;
-        });
-      }
+      const pub = data.published || {};
+      setPublishedYMs(pub);
       setPublishedLoaded(true);
+      // currentYMが非公開なら公開中の最新月に切り替え
+      setCurrentYM(prev => {
+        if (!prev) return prev;
+        if (pub[prev] === true) return prev; // 現在の月が公開中なのでそのまま
+        // 公開中の月を探す
+        const pubKeys = Object.entries(pub).filter(([, v]) => v === true).map(([k]) => k).sort().reverse();
+        return pubKeys[0] || null;
+      });
     }).catch(() => { setPublishedLoaded(true); });
   }, [gasOk]);
 
   const handleTogglePublish = async (ym) => {
-    const next = { ...publishedYMs, [ym]: !publishedYMs[ym] };
+    // 現在が true なら false に、それ以外（false/undefined）なら true に
+    const nextVal = publishedYMs[ym] !== true;
+    const next = { ...publishedYMs, [ym]: nextVal };
     setPublishedYMs(next);
-    // 非公開にした月を保護者が見ていたら公開月に切り替え
-    if (!next[ym] && currentYM === ym && !isAdmin) {
-      const pub = Object.entries(next)
-        .filter(([, v]) => v === true)
-        .map(([k]) => k)
-        .sort().reverse();
-      setCurrentYM(pub[0] || null);
-    }
-    // 管理者が非公開にした月を表示中でも内容はそのまま見せる（管理者はOK）
     try {
       if (!gasOk) { lsSave({ ...lsLoad(), __published: next }); }
       else { await gasPost({ action: "savePublished", published: next }); }
-      setSaveToast(next[ym] ? "✓ 公開しました！" : "🔒 非公開にしました");
+      setSaveToast(nextVal ? "✓ 公開しました！" : "🔒 非公開にしました");
       setTimeout(() => setSaveToast(""), 3000);
     } catch { setSaveToast("⚠️ 保存に失敗しました"); }
   };
@@ -630,12 +625,7 @@ export default function App() {
     if (!gasOk) {
       const keys = Object.keys(localData).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
       setAvailableYMs(keys);
-      if (keys.length > 0) setCurrentYM(prev => {
-        if (prev && keys.includes(prev)) return prev;
-        // 非管理者は公開中の最新月
-        const pub = keys.filter(k => publishedYMs[k] === true);
-        return pub[0] || keys[0];
-      });
+      if (keys.length > 0) setCurrentYM(prev => prev || keys[0]);
       return;
     }
     try {
@@ -643,14 +633,10 @@ export default function App() {
       const data = await gasReq({ action: "list" });
       const sorted = (data.yms || []).sort().reverse().slice(0, 4);
       setAvailableYMs(sorted);
-      if (sorted.length > 0) setCurrentYM(prev => {
-        if (prev && sorted.includes(prev)) return prev;
-        const pub = sorted.filter(k => publishedYMs[k] === true);
-        return pub[0] || sorted[0];
-      });
+      if (sorted.length > 0) setCurrentYM(prev => prev || sorted[0]);
     } catch { setError("データの読み込みに失敗しました"); }
     finally { setLoading(false); }
-  }, [gasOk, localData, publishedYMs]);
+  }, [gasOk, localData]);
 
   useEffect(() => { fetchList(); }, []);
   useEffect(() => {
@@ -744,7 +730,7 @@ export default function App() {
         {availableYMs.length > 0 && publishedLoaded && (
           <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
             {availableYMs
-              .filter(ym => isAdmin || publishedYMs[ym] === true)
+              .filter(ym => isVisible(ym))
               .map(ym => {
                 const isPublished = publishedYMs[ym] === true;
                 const isActive = currentYM === ym;
@@ -794,8 +780,14 @@ export default function App() {
             <p style={{ fontSize: 12 }}>管理者ログイン後、「＋ 新規作成」で作成してください</p>
           </div>
         )}
-        {!loading && currentYM && currentRows.length > 0 && (
+        {!loading && currentYM && currentRows.length > 0 && isVisible(currentYM) && (
           <ScheduleView rows={currentRows} setRows={setCurrentRows} notice={currentNotice} setNotice={setCurrentNotice} isAdmin={isAdmin} onSaveAll={handleSaveAll} saving={saving} boysMembers={boysMembers} girlsMembers={girlsMembers} holidaysSet={holidaysSet} currentYM={currentYM} />
+        )}
+        {!loading && publishedLoaded && currentYM && !isVisible(currentYM) && !isAdmin && (
+          <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+            <p style={{ fontSize: 14 }}>現在公開中の当番表はありません</p>
+          </div>
         )}
       </div>
     </div>
