@@ -645,19 +645,19 @@ export default function App() {
   // publishedYMsが変わったとき、currentYMが非公開なら公開月に切り替え
   useEffect(() => {
     if (!publishedLoaded) return;
-    if (isAdmin) return; // 管理者は切り替えない
+    if (isAdmin) return;
     setCurrentYM(prev => {
       if (!prev) return prev;
-      if (publishedYMs[prev] === true) return prev; // 現在の月が公開中ならそのまま
-      // 公開中の月を探して最新を返す
+      if (publishedYMs[prev] === true) return prev;
       const pubKeys = Object.entries(publishedYMs)
         .filter(([, v]) => v === true)
         .map(([k]) => k)
-        .sort()
-        .reverse();
+        .sort().reverse();
       return pubKeys[0] || null;
     });
   }, [publishedYMs, publishedLoaded, isAdmin]);
+
+  const fetchList = useCallback(async () => {
     if (!gasOk) {
       const keys = Object.keys(localData).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
       setAvailableYMs(keys);
