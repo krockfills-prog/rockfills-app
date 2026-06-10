@@ -588,27 +588,57 @@ export default function App() {
   // 公開中の月かどうかを判定（管理者は常にtrue）
   const isVisible = (ym) => isAdmin || publishedYMs[ym] === true;
 
+  // 初期化：getMembers → list の順に直列実行して競合を防ぐ
   useEffect(() => {
-    if (!gasOk) return;
-    gasReq({ action: "getMembers" }).then(data => {
-      if (data.boys?.length)     setBoysMembers(data.boys);
-      if (data.girls?.length)    setGirlsMembers(data.girls);
-      if (data.holidays?.length) setHolidays(data.holidays);
-      const pub = data.published || {};
-      setPublishedYMs(pub);
+    (async () => {
+      let pub = {};
+      if (gasOk) {
+        try {
+          const membersData = await gasReq({ action: "getMembers" });
+          if (membersData.boys?.length)     setBoysMembers(membersData.boys);
+          if (membersData.girls?.length)    setGirlsMembers(membersData.girls);
+          if (membersData.holidays?.length) setHolidays(membersData.holidays);
+          pub = membersData.published || {};
+          setPublishedYMs(pub);
+        } catch {}
+      }
       setPublishedLoaded(true);
-      // currentYMが非公開なら公開中の最新月に切り替え
-      setCurrentYM(prev => {
-        if (!prev) return prev;
-        if (pub[prev] === true) return prev; // 現在の月が公開中なのでそのまま
-        // 公開中の月を探す
-        const pubKeys = Object.entries(pub).filter(([, v]) => v === true).map(([k]) => k).sort().reverse();
-        return pubKeys[0] || null;
-      });
-    }).catch(() => { setPublishedLoaded(true); });
-  }, [gasOk]);
 
-  const handleTogglePublish = async (ym) => {
+      // YM一覧取得（getMembers完了後に実行）
+      if (!gasOk) {
+        const keys = Object.keys(lsLoad()).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
+        setAvailableYMs(keys);
+        const pubKeys = keys.filter(k => pub[k] === true);
+        setCurrentYM(pubKeys.length > 0 ? pubKeys[0] : keys[0] || null);
+        return;
+      }
+      try {
+        setLoading(true);
+        const listData = await gasReq({ action: "list" });
+        const sorted = (listData.yms || []).sort().reverse().slice(0, 4);
+        setAvailableYMs(sorted);
+        // 非管理者は公開中の最新月、管理者は最新月
+        const pubKeys = sorted.filter(k => pub[k] === true);
+        setCurrentYM(pubKeys.length > 0 ? pubKeys[0] : sorted[0] || null);
+      } catch { setError("データの読み込みに失敗しました"); }
+      finally { setLoading(false); }
+    })();
+  }, []); // 初回のみ実行
+
+  const fetchList = useCallback(async () => {
+    if (!gasOk) {
+      const keys = Object.keys(localData).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
+      setAvailableYMs(keys);
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await gasReq({ action: "list" });
+      const sorted = (data.yms || []).sort().reverse().slice(0, 4);
+      setAvailableYMs(sorted);
+    } catch { setError("データの読み込みに失敗しました"); }
+    finally { setLoading(false); }
+  }, [gasOk, localData]);
     // 現在が true なら false に、それ以外（false/undefined）なら true に
     const nextVal = publishedYMs[ym] !== true;
     const next = { ...publishedYMs, [ym]: nextVal };
@@ -642,21 +672,6 @@ export default function App() {
     finally { setSavingHolidays(false); }
   };
 
-  // publishedYMsが変わったとき、currentYMが非公開なら公開月に切り替え
-  useEffect(() => {
-    if (!publishedLoaded) return;
-    if (isAdmin) return;
-    setCurrentYM(prev => {
-      if (!prev) return prev;
-      if (publishedYMs[prev] === true) return prev;
-      const pubKeys = Object.entries(publishedYMs)
-        .filter(([, v]) => v === true)
-        .map(([k]) => k)
-        .sort().reverse();
-      return pubKeys[0] || null;
-    });
-  }, [publishedYMs, publishedLoaded, isAdmin]);
-
   const fetchList = useCallback(async () => {
     if (!gasOk) {
       const keys = Object.keys(localData).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
@@ -674,7 +689,6 @@ export default function App() {
     finally { setLoading(false); }
   }, [gasOk, localData]);
 
-  useEffect(() => { fetchList(); }, []);
   useEffect(() => {
     if (!currentYM) return;
     if (!gasOk) { const d = localData[currentYM] || {}; setCurrentRows(d.rows || []); setCurrentNotice(d.notice || ""); return; }
