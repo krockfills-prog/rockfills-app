@@ -218,41 +218,43 @@ export default function App() {
   // 公開判定
   const isVisible = (ym) => isAdmin || publishedYMs[ym] === true;
 
-  // ===== 初期化：直列実行で競合を防ぐ =====
+  // ===== 初期化：getMembers と list を並列実行 =====
   useEffect(() => {
     (async () => {
       let pub = {};
 
       if (gasOk) {
         try {
-          const md = await gasReq({ action: "getMembers" });
+          // getMembers と list を同時に実行
+          const [md, ld] = await Promise.all([
+            gasReq({ action: "getMembers" }),
+            gasReq({ action: "list" }),
+          ]);
+
+          // メンバー・祝日・公開状態を反映
           if (md.boys?.length)     setBoysMembers(md.boys);
           if (md.girls?.length)    setGirlsMembers(md.girls);
           if (md.holidays?.length) setHolidays(md.holidays);
           pub = md.published || {};
           setPublishedYMs(pub);
-        } catch {}
-      }
-      setPublishedLoaded(true);
 
-      // YM一覧取得
-      if (!gasOk) {
+          // YM一覧を反映
+          const sorted = (ld.yms || []).sort().reverse().slice(0, 4);
+          setAvailableYMs(sorted);
+          const pubKeys = sorted.filter(k => pub[k] === true);
+          setCurrentYM(pubKeys[0] || sorted[0] || null);
+
+        } catch { setError("データの読み込みに失敗しました"); }
+      } else {
+        // ローカルモード
         const keys = Object.keys(lsLoad()).filter(k => !k.startsWith("__")).sort().reverse().slice(0, 4);
         setAvailableYMs(keys);
         const pubKeys = keys.filter(k => pub[k] === true);
         setCurrentYM(pubKeys[0] || keys[0] || null);
-        return;
       }
-      try {
-        setLoading(true);
-        const ld = await gasReq({ action: "list" });
-        const sorted = (ld.yms || []).sort().reverse().slice(0, 4);
-        setAvailableYMs(sorted);
-        // 公開中の最新月を選択（なければ管理者向けに最新月）
-        const pubKeys = sorted.filter(k => pub[k] === true);
-        setCurrentYM(pubKeys[0] || sorted[0] || null);
-      } catch { setError("データの読み込みに失敗しました"); }
-      finally { setLoading(false); }
+
+      setPublishedLoaded(true);
+      setLoading(false);
     })();
   }, []); // 初回のみ
 
